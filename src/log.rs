@@ -31,7 +31,7 @@ impl OperationRecord {
 
 type Transaction = transaction::Transaction;
 impl Transaction {
-    fn to_serializable(self) -> TransactionLog {
+    pub fn to_serializable(self) -> TransactionLog {
         let status = self.status;
         let operations = self.operations
             .into_iter()

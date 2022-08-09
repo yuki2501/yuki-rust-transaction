@@ -15,17 +15,24 @@ pub struct DataBase {
 
 impl DataBase {
     pub fn new () -> anyhow::Result<Self> {
-        let mut log_file = OpenOptions::new()
+        let log_file = OpenOptions::new()
             .create(true)
             .append(true)
             .read(true)
             .open("./data_wal.log")
             .context("failed to open log")?;
-        let db_values = match (deserialize_snapshot()) {
-            Ok(snapshot) => snapshot,
-            _ => BTreeMap::new(),
+        let db_values = match deserialize_snapshot() {
+            Ok(snapshot) => {
+                println!("deserialize_snapshot: {:?}",snapshot);
+                snapshot
+            },
+            Err(_) => {
+                BTreeMap::new()
+            },
         };
-        let db_writeset : DataBaseWriteSetValue = BTreeMap::new();
+        let db_writeset : DataBaseWriteSetValue = db_values.clone().into_iter()
+            .map(|x| (x.0,Some(x.1)))
+            .collect();
         Ok(DataBase {
         wal_log_file: log_file,
         values: db_values,
@@ -34,10 +41,13 @@ impl DataBase {
     }
 
     pub fn get (&self, key: &str) -> Option<String> {
-        let value = self.write_set
-            .get(key)
-            .map( |v| v.clone())?;
-        value
+        let value_in_db = self.values.get(key);
+        let value_in_write_set = self.write_set.get(key);
+        match (value_in_db,value_in_write_set) {
+            (_, Some(x)) => x.clone(),
+            (Some(x),None) => Some(x.to_string()),
+            (None,None) => None,
+        }
     }
 
     pub fn insert(&mut self, key: &str, value: &str) { 
@@ -51,13 +61,14 @@ impl DataBase {
     }
 
     pub fn apply_commit(&mut self)  {
-        let mut new_values: BTreeMap<Key,Value> = BTreeMap::new();
+        let mut new_values:DataBaseValue = BTreeMap::new();
         for (k,v) in self.write_set.iter_mut() {
             if v.clone() != None {
                 new_values.insert(k.to_string(), v.clone().unwrap().to_string());
             }
         }
         self.values = new_values;
+        self.snapshot().unwrap();
     } 
 
     pub fn apply_abort(&mut self){
@@ -65,9 +76,9 @@ impl DataBase {
     }
 
     pub fn snapshot(&self) -> Result<()>{
-        let mut file = OpenOptions::new()
-            .create(true)
+        let file = OpenOptions::new()
             .write(true)
+            .create(true)
             .open("./data.log")
             .context("failed to open log")?;
         let mut values_byte= bincode::serialize(&self.values)
@@ -113,8 +124,11 @@ mod test {
     fn remove_works() {
         let mut test_db = DataBase::new().unwrap();
         test_db.insert("testkey", "testvalue");
+        test_db.insert("testkey2","testvalue");
         test_db.remove("testkey");
+        test_db.apply_commit();
         assert_eq!(test_db.get("testkey"), None);
+        assert_eq!(test_db.get("testkey2"),Some("testvalue".to_string()));
     }
     #[test]
     #[should_panic]
@@ -135,5 +149,7 @@ mod test {
         db.snapshot().unwrap();
         let deserialized_db = deserialize_snapshot().unwrap();
         assert_eq!(db.values,deserialized_db);
+        assert_eq!(db.get("snapshot_test").unwrap().to_string(),"snapshot_test_value");
+        assert_eq!(db.get("test1").unwrap().to_string(),"test");
     }
 }

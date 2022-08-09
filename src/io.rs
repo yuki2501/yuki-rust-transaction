@@ -6,11 +6,6 @@ use anyhow::{anyhow, Context};
 
 type Result<T> = anyhow::Result<T>;
 
-pub fn open(path: &str) -> Result<File>{
-   let file = File::open(path).context("Cannot open file")?;
-   Ok(file) 
-}
-
 fn fsync(file: &File) -> Result<()> {
    file.sync_all()?;
    Ok(())

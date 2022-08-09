@@ -1,14 +1,16 @@
-use std::{path::Path, fs::File};
+use std::{path::Path, fs::{File, OpenOptions}};
 
 use anyhow::{anyhow, Context};
 use serde::{Serialize,Deserialize};
 
-use crate::{log::deserialize_transaction, db::DataBase};
+use crate::{log::{deserialize_transaction, deserialize_transaction_vector}, db::DataBase, io::delete_file};
+
+type Result<T> = anyhow::Result<T>;
 
 #[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
 pub enum Command {
     Insert,
- //   Get,
+    //Get,
     Remove,
 }
 
@@ -44,28 +46,29 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    fn new(db: &mut DataBase) -> Transaction{
+    pub fn new(db: &mut DataBase) -> Transaction{
         return Transaction {
                status: TransactionStatus::Abort,
                operations: Vec::new(),
         }
     }
 
-    fn consume_transaction(self,db: &mut DataBase) {
+    pub fn consume_transaction(self,db: &mut DataBase) {
        let status = self.status;
        
        if status == TransactionStatus::Abort {
-           return; 
+           db.apply_abort(); 
        }
        else { 
           let operations = self.operations;
           for operation in operations.into_iter() {
              operation.consume_operation(db);
           }
+          db.apply_commit();
        }
     }
 
-    fn add_operation(&mut self, operation: OperationRecord) -> Transaction {
+    pub fn add_operation(&mut self, operation: OperationRecord) -> Transaction {
         self.operations.push(operation);
         return Transaction{
             status: TransactionStatus::Abort,
@@ -73,20 +76,34 @@ impl Transaction {
         }
     }
 
-    fn commit(self) -> Transaction {
+    pub fn commit(&self) -> Transaction {
         return Transaction {
             status: TransactionStatus::Commit,
-            operations: self.operations,
+            operations: self.operations.clone(),
         }
     }
 
-    fn abort(self) -> Transaction {
+    pub fn abort(&self) -> Transaction {
         return Transaction {
             status: TransactionStatus::Abort,
-            operations: self.operations,
+            operations: self.operations.clone(),
 
         }
     }
+}
+
+pub fn checkpointing(db:&mut DataBase) -> Result<()> {
+    let mut wal_log_file = OpenOptions::new()
+        .read(true)
+        .open("./data_wal.log")
+        .context("cannot open log file")?;
+    for transaction in deserialize_transaction_vector(&mut wal_log_file) {
+        Transaction::consume_transaction(transaction.to_operations_record(), db);
+    };
+    db.snapshot()
+        .context("cannot take snapshot")?;
+    delete_file(Path::new("./data_wal.log"))?;
+    Ok(())
 }
 
 
