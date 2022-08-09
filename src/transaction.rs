@@ -3,7 +3,7 @@ use std::{path::Path, fs::File};
 use anyhow::{anyhow, Context};
 use serde::{Serialize,Deserialize};
 
-use crate::{log::deserialize_log, db::DataBase};
+use crate::{log::deserialize_transaction, db::DataBase};
 
 #[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
 pub enum Command {
@@ -12,7 +12,7 @@ pub enum Command {
     Remove,
 }
 
-#[derive(Debug,PartialEq,Serialize,Deserialize)]
+#[derive(Debug,PartialEq,Serialize,Deserialize,Clone)]
 pub enum TransactionStatus {
     Commit,
     Abort,
@@ -22,10 +22,8 @@ pub enum TransactionStatus {
 pub struct OperationRecord {
     pub command: Command,
     pub key: String,
-//    pub key_length: u32,
     pub value: String,
-//    pub value_length: u32,
-    pub value_hash: u32,
+    //pub value_hash: u32,
 }
 
 impl OperationRecord {
@@ -39,6 +37,7 @@ impl OperationRecord {
 
 
 
+#[derive(Debug,PartialEq)]
 pub struct Transaction {
     pub status: TransactionStatus,
     pub operations: Vec<OperationRecord>,
@@ -46,21 +45,9 @@ pub struct Transaction {
 
 impl Transaction {
     fn new(db: &mut DataBase) -> Transaction{
-        let mut log_file = File::open(Path::new("./data_test.log")).context("cannot open file").unwrap();
-        let deserialized_log = deserialize_log(&mut log_file);
-        match deserialized_log {
-            Ok(deserialized_data) => {
-                deserialized_data.to_operations_record()
-                    .consume_transaction(db);
-                return Transaction {
-                    status: TransactionStatus::Abort,
-                    operations: Vec::new(),
-                }
-            } 
-           Err(_) => Transaction {
+        return Transaction {
                status: TransactionStatus::Abort,
                operations: Vec::new(),
-           }
         }
     }
 
