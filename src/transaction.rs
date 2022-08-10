@@ -11,6 +11,7 @@ type Result<T> = anyhow::Result<T>;
 pub enum Command {
     Insert,
     Remove,
+    Get,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -27,12 +28,33 @@ pub struct OperationRecord {
     //pub value_hash: u32,
 }
 
+pub enum OperationResult {
+    DoneInsert,
+    DoneRemove,
+    DoneGet(Option<String>),
+}
+
 impl OperationRecord {
-    pub fn execute_operation(self, write_set: &mut BTreeMap<String, String>) {
+    pub fn execute_operation_for_writeset(self, db: &mut DataBase, write_set: &mut BTreeMap<String, Option<String>>) -> OperationResult {
         match self.command {
-            Command::Insert => write_set.insert(self.key, self.value),
-            Command::Remove => write_set.remove(&self.key),
-        };
+            Command::Insert => {
+                write_set.insert(self.key, Some(self.value));
+                return OperationResult::DoneInsert;
+            },
+            Command::Remove => {
+                write_set.insert(self.key, None);
+                return OperationResult::DoneRemove;
+            },
+            Command::Get => {
+                match (db.get(&self.key),write_set.get(&self.key)) {
+                    (_, Some(Some (x))) => OperationResult::DoneGet(Some(x.to_string())),
+                    (Some(x), None) => OperationResult::DoneGet(Some(x.to_string())),
+                    (Some(_), Some(None)) => OperationResult::DoneGet(None),
+                    (None,Some(None)) => OperationResult::DoneGet(None),
+                    (None,None) => OperationResult::DoneGet(None),
+                }
+            }
+        }
     }
 }
 
@@ -40,24 +62,28 @@ impl OperationRecord {
 pub struct Transaction {
     pub status: TransactionStatus,
     pub operations: Vec<OperationRecord>,
+    pub write_set: BTreeMap<String,Option<String>>,
 }
 
 impl Transaction {
     pub fn new() -> Transaction {
-        return Transaction {
+        let write_set = BTreeMap::new();
+        Transaction {
             status: TransactionStatus::Abort,
             operations: Vec::new(),
-        };
+            write_set,
+        }
     }
 
     pub fn execute_transaction(&mut self, db: &mut DataBase) {
         if self.status != TransactionStatus::Abort {
-            db.apply_commit(self);
+            self.apply_commit(db);
         }
     }
 
-    pub fn add_operation(&mut self, operation: OperationRecord) {
-        self.operations.push(operation);
+    pub fn add_operation_to_transaction(&mut self, db: &mut DataBase, operation: &OperationRecord) -> OperationResult {
+        self.operations.push(operation.clone());
+        OperationRecord::execute_operation_for_writeset(operation.clone(),db,&mut self.write_set)
     }
 
     pub fn set_comitted(&mut self) {
@@ -69,13 +95,16 @@ impl Transaction {
         self.operations = Vec::new();
     }
 
-    pub fn tmp_write_set(&mut self, db: &DataBase) -> BTreeMap<String, String> {
-        let mut write_set = db.values.clone();
-        for operation in self.operations.clone().into_iter() {
-            operation.execute_operation(&mut write_set);
+    pub fn apply_commit(&mut self, db:&mut DataBase){
+        let iter = self.write_set.iter();
+        for record in iter {
+            match record {
+                (key, Some(value)) => {db.values.insert(key.to_string(), value.to_string());},
+                (key, None) => {db.values.remove(key);},
+            }  
         }
-        return write_set;
     }
+
 }
 
 pub fn crash_recovery(db: &mut DataBase) -> Result<()> {
@@ -106,27 +135,27 @@ mod test {
     fn remove_works() {
         let mut test_db = DataBase::new().unwrap();
         let mut transaction = Transaction::new();
-        transaction.add_operation(OperationRecord {
+        transaction.add_operation_to_transaction(&mut test_db,&OperationRecord {
             command: Command::Insert,
             key: "testkey".to_string(),
             value: "testvalue".to_string(),
         });
-        transaction.add_operation(OperationRecord {
+        transaction.add_operation_to_transaction(&mut test_db,&OperationRecord {
             command: Command::Insert,
             key: "testkey2".to_string(),
             value: "testvalue2".to_string(),
         });
-        transaction.add_operation(OperationRecord {
+        transaction.add_operation_to_transaction(&mut test_db, &OperationRecord {
             command: Command::Remove,
             key: "testkey".to_string(),
             value: "".to_string(),
         });
         transaction.set_comitted();
         transaction.execute_transaction(&mut test_db);
-        assert_eq!(test_db.get("testkey", &mut transaction), None);
+        assert_eq!(test_db.get("testkey"), None);
         assert_eq!(
-            test_db.get("testkey2", &mut transaction),
-            Some("testvalue".to_string())
-        );
+            test_db.get("testkey2"),
+            Some(&("testvalue".to_string()))
+            );
     }
 }

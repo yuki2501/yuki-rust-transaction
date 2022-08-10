@@ -20,19 +20,13 @@ impl DataBase {
         Ok(DataBase { values: db_values })
     }
 
-    pub fn get(&mut self, key: &str, transaction: &mut Transaction) -> Option<String> {
-        let value_in_db = self.values.get(key);
-        match (value_in_db, transaction.tmp_write_set(&self).get(key)) {
-            (_, Some(x)) => Some(x.to_string()),
-            (Some(x), None) => Some(x.to_string()),
-            (None, None) => None,
-        }
+    pub fn get(&mut self, key: &str) -> Option<&String> {
+        self.values.get(key)
     }
 
-    pub fn apply_commit(&mut self, transaction: &mut Transaction) {
-        let write_set = transaction.tmp_write_set(self);
-        self.values = write_set;
-    }
+    // pub fn apply_commit(&mut self, transaction: &mut Transaction) {
+    //     self.values = transaction.write_set;
+    // }
 
     pub fn take_snapshot(&self) -> Result<()> {
         let file = OpenOptions::new()

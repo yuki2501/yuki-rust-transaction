@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     db::DataBase,
-    transaction::{checkpointing, crash_recovery, OperationRecord, Transaction},
+    transaction::{checkpointing, crash_recovery, OperationRecord, Transaction, OperationResult},
 };
 
 mod db;
@@ -33,17 +33,29 @@ fn main() {
         match operation {
             "get" => {
                 let key = splited_input.next().unwrap();
+                let result = transaction.add_operation_to_transaction(&mut db,&OperationRecord {
+                    command: transaction::Command::Get,
+                    key: key.to_string(),
+                    value: "".to_string(),
+                });
+                let value = match result {
+                    OperationResult::DoneGet(x) => {
+                        match x {
+                            Some(value) => value,
+                            None => "not found".to_string(),
+                        }
+                    },
+                    _ => "error".to_string(),
+                };
                 println!(
-                    "{}",
-                    db.get(key, &mut transaction)
-                        .unwrap_or("Not Found Value".to_string())
+                    "{}",value
                 );
             }
 
             "insert" => {
                 let key = splited_input.next().unwrap();
                 let value = splited_input.next().unwrap();
-                transaction.add_operation(OperationRecord {
+                transaction.add_operation_to_transaction(&mut db,&OperationRecord {
                     command: transaction::Command::Insert,
                     key: key.to_string(),
                     value: value.to_string(),
@@ -52,7 +64,7 @@ fn main() {
 
             "remove" => {
                 let key = splited_input.next().unwrap();
-                transaction.add_operation(OperationRecord {
+                transaction.add_operation_to_transaction(&mut db,&OperationRecord {
                     command: transaction::Command::Remove,
                     key: key.to_string(),
                     value: "".to_string(),
@@ -65,7 +77,7 @@ fn main() {
                     .to_serializable()
                     .atomic_log_write(&mut wal_log_file)
                     .unwrap();
-                db.apply_commit(&mut transaction);
+                transaction.apply_commit(&mut db);
                 db.take_snapshot().unwrap();
                 transaction = Transaction::new();
             }

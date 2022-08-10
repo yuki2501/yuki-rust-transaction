@@ -3,7 +3,7 @@ use crc32fast::*;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{Read, Seek, SeekFrom}, collections::BTreeMap,
 };
 use thiserror::Error;
 
@@ -33,13 +33,14 @@ type Transaction = transaction::Transaction;
 impl Transaction {
     pub fn to_serializable(&mut self) -> TransactionLog {
         let status = self.status.clone();
+        let write_set = self.write_set.clone();
         let operations = self
             .operations
             .clone()
             .into_iter()
             .map(OperationRecord::to_serializable)
             .collect();
-        return TransactionLog { status, operations };
+        return TransactionLog { status, operations, write_set  };
     }
 }
 
@@ -73,6 +74,7 @@ impl LogRecord {
 pub struct TransactionLog {
     pub status: Status,
     pub operations: Vec<LogRecord>,
+    pub write_set: BTreeMap<String,Option<String>>,
 }
 impl TransactionLog {
     pub fn to_bytes(&self) -> Option<Vec<u8>> {
@@ -104,7 +106,8 @@ impl TransactionLog {
             .map(LogRecord::to_operations)
             .collect();
         let status = self.status;
-        return Transaction { status, operations };
+        let write_set = self.write_set;
+        return Transaction { status, operations, write_set  };
     }
 }
 
@@ -197,6 +200,7 @@ mod test {
         let commit_records = TransactionLog {
             status,
             operations: log_record.clone(),
+            write_set: BTreeMap::new(),
         };
 
         let mut log_file = OpenOptions::new()
@@ -228,10 +232,12 @@ mod test {
         let transactions = vec![Transaction {
             status: status.clone(),
             operations: operation_records,
+            write_set: BTreeMap::new(),
         }];
         let commit_records = vec![TransactionLog {
             status: status.clone(),
             operations: log_records,
+            write_set: BTreeMap::new(),
         }];
         let mut log_file = OpenOptions::new()
             .append(true)
