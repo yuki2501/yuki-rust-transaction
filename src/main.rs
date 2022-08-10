@@ -1,9 +1,15 @@
-use std::{io::{stdout, Write, stdin}, fs::OpenOptions};
+use std::{
+    fs::OpenOptions,
+    io::{stdin, stdout, Write},
+};
 
-use crate::{db::DataBase, transaction::{checkpointing, Transaction, OperationRecord, crash_recovery}};
+use crate::{
+    db::DataBase,
+    transaction::{checkpointing, crash_recovery, OperationRecord, Transaction},
+};
 
-mod io;
 mod db;
+mod io;
 mod log;
 mod transaction;
 fn main() {
@@ -14,7 +20,8 @@ fn main() {
     let mut wal_log_file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open("./data_wal.log").unwrap();
+        .open("./data_wal.log")
+        .unwrap();
     let mut transaction = Transaction::new();
     loop {
         print!("> ");
@@ -24,59 +31,55 @@ fn main() {
         let mut splited_input = input_buf.split_whitespace();
         let operation = splited_input.next().unwrap();
         match operation {
-
             "get" => {
                 let key = splited_input.next().unwrap();
-                println!("{}",db.get(key).unwrap_or("Not Found Value".to_string()));
-            },
+                println!(
+                    "{}",
+                    db.get(key, &mut transaction)
+                        .unwrap_or("Not Found Value".to_string())
+                );
+            }
 
             "insert" => {
                 let key = splited_input.next().unwrap();
                 let value = splited_input.next().unwrap();
-                transaction.add_operation(
-                   OperationRecord { 
-                        command: transaction::Command::Insert, 
-                        key:key.to_string(),
-                        value:value.to_string()
-                    }
-                );
-                db.insert(key,value);
-            },
+                transaction.add_operation(OperationRecord {
+                    command: transaction::Command::Insert,
+                    key: key.to_string(),
+                    value: value.to_string(),
+                });
+            }
 
             "remove" => {
                 let key = splited_input.next().unwrap();
-                transaction
-                    .add_operation(
-                        OperationRecord { 
-                            command: transaction::Command::Remove, 
-                            key:key.to_string(),
-                            value:"".to_string()
-                        }
-                );
-                db.remove(key);
-            },
+                transaction.add_operation(OperationRecord {
+                    command: transaction::Command::Remove,
+                    key: key.to_string(),
+                    value: "".to_string(),
+                });
+            }
 
             "commit" => {
                 transaction.set_comitted();
-                transaction.to_serializable()
+                transaction
+                    .to_serializable()
                     .atomic_log_write(&mut wal_log_file)
                     .unwrap();
-                db.apply_commit();
+                db.apply_commit(&mut transaction);
+                db.take_snapshot().unwrap();
                 transaction = Transaction::new();
-            },
+            }
 
             "abort" => {
                 transaction.set_abortted();
-                transaction.to_serializable()
+                transaction
+                    .to_serializable()
                     .atomic_log_write(&mut wal_log_file)
                     .unwrap();
-                db.apply_abort();
                 transaction = Transaction::new();
-            },
+            }
 
             _ => println!("error"),
-
         }
-
     }
 }
