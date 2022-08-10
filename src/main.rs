@@ -1,6 +1,6 @@
 use std::{io::{stdout, Write, stdin}, fs::OpenOptions};
 
-use crate::{db::DataBase, transaction::{checkpointing, Transaction, OperationRecord}};
+use crate::{db::DataBase, transaction::{checkpointing, Transaction, OperationRecord, crash_recovery}};
 
 mod io;
 mod db;
@@ -9,6 +9,7 @@ mod transaction;
 fn main() {
     println!("Hello, world!");
     let mut db = DataBase::new().unwrap();
+    crash_recovery(&mut db).unwrap();
     checkpointing(&mut db).unwrap();
     let mut wal_log_file = OpenOptions::new()
         .create(true)

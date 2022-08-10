@@ -22,7 +22,8 @@ impl DataBase {
                 BTreeMap::new()
             },
         };
-        let db_writeset : DataBaseWriteSetValue = db_values.clone().into_iter()
+        let db_writeset : DataBaseWriteSetValue = db_values.clone()
+            .into_iter()
             .map(|x| (x.0,Some(x.1)))
             .collect();
         Ok(DataBase {

@@ -10,7 +10,6 @@ type Result<T> = anyhow::Result<T>;
 #[derive(Clone,Debug,PartialEq,Serialize,Deserialize)]
 pub enum Command {
     Insert,
-    //Get,
     Remove,
 }
 
@@ -81,8 +80,7 @@ impl Transaction {
     }
 }
 
-pub fn checkpointing(db:&mut DataBase) -> Result<()> {
-    //TODO separete crash recovery and checkpointing
+pub fn crash_recovery(db: &mut DataBase) -> Result<()> {
     let mut wal_log_file = OpenOptions::new()
         .create(true)
         .read(true)
@@ -92,6 +90,10 @@ pub fn checkpointing(db:&mut DataBase) -> Result<()> {
     for transaction in deserialize_transaction_vector(&mut wal_log_file) {
         Transaction::execute_transaction(transaction.to_operations_record(), db);
     };
+    Ok(())
+}
+
+pub fn checkpointing(db:&mut DataBase) -> Result<()> {
     db.snapshot()
         .context("cannot take snapshot")?;
     delete_file(Path::new("./data_wal.log"))?;
