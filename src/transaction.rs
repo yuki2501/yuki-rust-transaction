@@ -54,7 +54,6 @@ impl Transaction {
 
     pub fn execute_transaction(self,db: &mut DataBase) {
        let status = self.status;
-       
        if status == TransactionStatus::Abort {
            db.apply_abort(); 
        }

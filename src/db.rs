@@ -141,6 +141,5 @@ mod test {
         let deserialized_db = deserialize_snapshot().unwrap();
         assert_eq!(db.values,deserialized_db);
         assert_eq!(db.get("snapshot_test").unwrap().to_string(),"snapshot_test_value");
-        assert_eq!(db.get("test1").unwrap().to_string(),"test");
     }
 }

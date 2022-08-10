@@ -1,6 +1,5 @@
 use std::{io::{Read, Seek, SeekFrom}, fs::File};
 use super::transaction;
-use anyhow::ensure;
 use serde::{Serialize, Deserialize};
 use crc32fast::*;
 use thiserror::Error;
