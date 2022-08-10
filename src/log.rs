@@ -1,7 +1,6 @@
-use std::{io::{self, Read, Seek, SeekFrom}, fs::{File,OpenOptions}, path::Path};
-use crate::io::delete_file;
-use super::{transaction};
-use anyhow::Context;
+use std::{io::{Read, Seek, SeekFrom}, fs::File};
+use super::transaction;
+use anyhow::ensure;
 use serde::{Serialize, Deserialize};
 use crc32fast::*;
 use thiserror::Error;
@@ -53,13 +52,8 @@ pub struct LogRecord {
   command: Command,
   #[serde(with = "serde_bytes")]
   key: Vec<u8>,
-  //#[serde(with = "serde_bytes")]
-  //key_length: Vec<u8>,
   #[serde(with = "serde_bytes")]
   value: Vec<u8>,
-  //#[serde(with = "serde_bytes")] 
-  //value_length: Vec<u8>,
-  //value_hash: u32,
 }
 
 impl LogRecord {
@@ -67,7 +61,6 @@ impl LogRecord {
          let command = self.command.clone();
          let key = String::from_utf8(self.key.clone()).unwrap();
          let value = String::from_utf8(self.value.clone()).unwrap();
-//         let value_hash = self.value_hash;
          return 
              OperationRecord {
                  command,
@@ -84,7 +77,6 @@ pub struct TransactionLog {
     pub status: Status,
     pub operations: Vec<LogRecord>,
 }
-//TODO Fix Chechpointing time
 impl TransactionLog {
 
     pub fn to_bytes(&self) -> Option<Vec<u8>> {
@@ -143,28 +135,30 @@ pub enum DeserializeError {
 
 
 pub fn deserialize_transaction(file: &mut File,position: u64)-> std::result::Result<(TransactionLog,u64),DeserializeError> {
+    let error_convert = {|err:std::io::Error| if err.kind() == std::io::ErrorKind::UnexpectedEof {DeserializeError::Eof} else {DeserializeError::OtherError}}; 
 // len -> 8byte, checksum -> 4byte, rest -> (len) byte
-    file.rewind().map_err(|err| if err.kind() == std::io::ErrorKind::UnexpectedEof {DeserializeError::Eof} else {DeserializeError::OtherError})?;
-    file.seek(SeekFrom::Start(position)).map_err(|err| if err.kind() == std::io::ErrorKind::UnexpectedEof {DeserializeError::Eof} else {DeserializeError::OtherError})?;
+    file.rewind()
+        .map_err(error_convert)?;
+    file.seek(SeekFrom::Start(position))
+        .map_err(error_convert)?;
     let mut buffer = [0; 8];
-    file.read_exact(&mut buffer).map_err(|err| if err.kind() == std::io::ErrorKind::UnexpectedEof {DeserializeError::Eof} else {DeserializeError::OtherError})?; 
+    file.read_exact(&mut buffer)
+        .map_err(error_convert)?; 
     let data_len = u64::from_le_bytes(buffer);
     let mut buffer = [0; 4];
     file.read_exact(&mut buffer)
-        .map_err(|err| if err.kind() == std::io::ErrorKind::UnexpectedEof {DeserializeError::Eof} 
-                 else {DeserializeError::OtherError})?; 
+        .map_err(error_convert)?; 
     let checksum = u32::from_le_bytes(buffer);
     let mut buffer = Vec::new();
     let mut handle = file.take(data_len);
     handle.read_to_end(&mut buffer)
-        .map_err(|err| if err.kind() == std::io::ErrorKind::UnexpectedEof {DeserializeError::Eof} 
-                 else {DeserializeError::OtherError})?;
+        .map_err(error_convert)?;
     if crc32fast::hash(&buffer) != (checksum) {
         return Err(DeserializeError::ChecksumUnmatch);
-    } 
-
-    let log_content = bincode::deserialize(&buffer).map_err(|_| DeserializeError::OtherError)?;
-    return Ok((log_content,file.stream_position().unwrap()));
+    }
+    let log_content = bincode::deserialize(&buffer)
+        .map_err(|_| DeserializeError::OtherError)?;
+    Ok((log_content,file.stream_position().unwrap()))
 }
 
 pub fn deserialize_transaction_vector(file: &mut File) -> Vec<TransactionLog> {
@@ -175,17 +169,15 @@ pub fn deserialize_transaction_vector(file: &mut File) -> Vec<TransactionLog> {
             Ok((x,n)) => {
                 transaction_vec.push(x);
                 position = n;
-                println!("InOk: {:?}\n",position);
                 continue;
             },
-            Err(x) => {
-                if x == DeserializeError::Eof {
-                    break;
-                } else {
-                    position += 1;
-                    continue;
-                }
-            },  
+            Err(DeserializeError::Eof) => {
+                break;
+            },
+            _ => {
+                position += 1;
+                continue;
+            },
         }
     }
     return transaction_vec;
@@ -195,10 +187,13 @@ pub fn deserialize_transaction_vector(file: &mut File) -> Vec<TransactionLog> {
 
 #[cfg(test)]
 mod test{
-  use anyhow::Context;
+  use std::{fs::OpenOptions, path::Path};
 
+use anyhow::Context;
 
-  use super::*;
+use crate::io::delete_file;
+
+use super::*;
   #[test]
   fn serialize_test(){
       let log_record = vec![OperationRecord {
@@ -214,11 +209,7 @@ mod test{
           status,
           operations:log_record.clone(),
       };
-      let abort_records = TransactionLog {
-          status: Status::Abort,
-          operations:log_record.clone(),
-      };
-
+      
       let mut log_file = OpenOptions::new()
           .create(true)
           .append(true)

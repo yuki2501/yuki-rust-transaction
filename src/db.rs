@@ -1,5 +1,4 @@
-use std::{collections::BTreeMap, fs::{File, OpenOptions}, path::Path, io::Read};
-use serde::{Serialize,Deserialize};
+use std::{collections::BTreeMap, fs::OpenOptions,  io::Read};
 use anyhow::{Context, ensure};
 
 type Key = String;
@@ -8,19 +7,12 @@ type DataBaseValue = BTreeMap<Key, Value>;
 type DataBaseWriteSetValue = BTreeMap<Key, Option<Value>>;
 type Result<T> = anyhow::Result<T>;
 pub struct DataBase {
-   wal_log_file: File,
    values: DataBaseValue,
    write_set: DataBaseWriteSetValue,
 }
 
 impl DataBase {
     pub fn new () -> anyhow::Result<Self> {
-        let log_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .read(true)
-            .open("./data_wal.log")
-            .context("failed to open log")?;
         let db_values = match deserialize_snapshot() {
             Ok(snapshot) => {
                 println!("deserialize_snapshot: {:?}",snapshot);
@@ -34,7 +26,6 @@ impl DataBase {
             .map(|x| (x.0,Some(x.1)))
             .collect();
         Ok(DataBase {
-        wal_log_file: log_file,
         values: db_values,
         write_set: db_writeset,
         })
@@ -68,7 +59,6 @@ impl DataBase {
             }
         }
         self.values = new_values;
-        self.snapshot().unwrap();
     } 
 
     pub fn apply_abort(&mut self){
