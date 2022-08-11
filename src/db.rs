@@ -1,7 +1,7 @@
 use anyhow::{ensure, Context};
 use std::{collections::BTreeMap, fs::OpenOptions, io::Read};
 
-use crate::{transaction::Transaction, io::write};
+use crate::{io::write, transaction::Transaction};
 
 type Key = String;
 type Value = String;
@@ -37,14 +37,9 @@ impl DataBase {
 
         let mut values_byte = bincode::serialize(&self.values).context("cannot serialize")?;
 
-        let mut values_len = values_byte
-            .len()
-            .to_le_bytes()
-            .to_vec();
+        let mut values_len = values_byte.len().to_le_bytes().to_vec();
 
-        let mut hash = crc32fast::hash(&values_byte)
-            .to_le_bytes()
-            .to_vec();
+        let mut hash = crc32fast::hash(&values_byte).to_le_bytes().to_vec();
 
         let mut snapshot_log = Vec::new();
 

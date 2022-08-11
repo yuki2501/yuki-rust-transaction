@@ -2,8 +2,9 @@ use super::transaction;
 use crc32fast::*;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     fs::File,
-    io::{Read, Seek, SeekFrom}, collections::BTreeMap,
+    io::{Read, Seek, SeekFrom},
 };
 use thiserror::Error;
 
@@ -40,7 +41,11 @@ impl Transaction {
             .into_iter()
             .map(OperationRecord::to_serializable)
             .collect();
-        return TransactionLog { status, operations, write_set  };
+        return TransactionLog {
+            status,
+            operations,
+            write_set,
+        };
     }
 }
 
@@ -74,7 +79,7 @@ impl LogRecord {
 pub struct TransactionLog {
     pub status: Status,
     pub operations: Vec<LogRecord>,
-    pub write_set: BTreeMap<String,Option<String>>,
+    pub write_set: BTreeMap<String, Option<String>>,
 }
 impl TransactionLog {
     pub fn to_bytes(&self) -> Option<Vec<u8>> {
@@ -107,7 +112,11 @@ impl TransactionLog {
             .collect();
         let status = self.status;
         let write_set = self.write_set;
-        return Transaction { status, operations, write_set  };
+        return Transaction {
+            status,
+            operations,
+            write_set,
+        };
     }
 }
 

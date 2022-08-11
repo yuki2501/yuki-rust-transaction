@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     db::DataBase,
-    transaction::{checkpointing, crash_recovery, OperationRecord, Transaction, OperationResult},
+    transaction::{checkpointing, crash_recovery, OperationRecord, OperationResult, Transaction},
 };
 
 mod db;
@@ -33,42 +33,47 @@ fn main() {
         match operation {
             "get" => {
                 let key = splited_input.next().unwrap();
-                let result = transaction.add_operation_to_transaction(&mut db,&OperationRecord {
-                    command: transaction::Command::Get,
-                    key: key.to_string(),
-                    value: "".to_string(),
-                });
+                let result = transaction.add_operation_to_transaction(
+                    &mut db,
+                    &OperationRecord {
+                        command: transaction::Command::Get,
+                        key: key.to_string(),
+                        value: "".to_string(),
+                    },
+                );
                 let value = match result {
-                    OperationResult::DoneGet(x) => {
-                        match x {
-                            Some(value) => value,
-                            None => "not found".to_string(),
-                        }
+                    OperationResult::DoneGet(x) => match x {
+                        Some(value) => value,
+                        None => "not found".to_string(),
                     },
                     _ => "error".to_string(),
                 };
-                println!(
-                    "{}",value
-                );
+                println!("{}", value);
             }
 
             "insert" => {
                 let key = splited_input.next().unwrap();
                 let value = splited_input.next().unwrap();
-                transaction.add_operation_to_transaction(&mut db,&OperationRecord {
-                    command: transaction::Command::Insert,
-                    key: key.to_string(),
-                    value: value.to_string(),
-                });
+                transaction.add_operation_to_transaction(
+                    &mut db,
+                    &OperationRecord {
+                        command: transaction::Command::Insert,
+                        key: key.to_string(),
+                        value: value.to_string(),
+                    },
+                );
             }
 
             "remove" => {
                 let key = splited_input.next().unwrap();
-                transaction.add_operation_to_transaction(&mut db,&OperationRecord {
-                    command: transaction::Command::Remove,
-                    key: key.to_string(),
-                    value: "".to_string(),
-                });
+                transaction.add_operation_to_transaction(
+                    &mut db,
+                    &OperationRecord {
+                        command: transaction::Command::Remove,
+                        key: key.to_string(),
+                        value: "".to_string(),
+                    },
+                );
             }
 
             "commit" => {

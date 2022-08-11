@@ -23,3 +23,4 @@ pub fn delete_file(path: &Path) -> Result<()> {
     remove_file(path).context("cannot remove")?;
     Ok(())
 }
+
